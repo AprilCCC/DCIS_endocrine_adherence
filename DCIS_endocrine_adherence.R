@@ -6,6 +6,14 @@ library(gtsummary)
 library(stringr)
 library(readr)
 
+PHH1233_table <- read.table("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH linkage/MOH-DataServices_PHH1233_table.txt", 
+                      header = TRUE, 
+                      sep = "|", 
+                      quote = "\"",  # handle quoted strings properly
+                      fill = TRUE)    # fill missing columns with NAs
+
+write.csv(PHH1233_table, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH/PHH1233_table.csv",row.names=FALSE)
+
 
 #### Demographic file
 BCFNZ_work <- read_excel("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/De identify/Workup.xlsx")
@@ -174,6 +182,7 @@ BCFNZ_lesion_type <- BCFNZ_lesion_1 %>%
 write.csv(BCFNZ_lesion_type, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_lesion_type.csv",row.names=FALSE)
 
 
+
 ###cross check with NZCR data 
 ### choose insitu and invasive breast cancer cases from NZCR
 #CAS2258 <- read.csv("D:/UOA/DCIS/NZ data/Data set/MOH-20240209/MOH_cas2258.csv")
@@ -328,13 +337,16 @@ phh1233_table <- read.csv("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH/P
 
 Cohort <- read.csv("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH/Cohort.csv")
 
-ET_name <- phh1233_table %>%
-  filter(TG_LEVEL1_NAME=="Oncology Agents and Immunosuppressants",TG_LEVEL2_NAME=="Endocrine Therapy")
+#ET_name <- phh1233_table %>% filter(TG_LEVEL1_NAME=="Oncology Agents and Immunosuppressants",TG_LEVEL2_NAME=="Endocrine Therapy")
 
-phh1233_ET <- ET_name %>%
-  left_join(phh1233, by = c("DIM_FORM_PACK_SUBSIDY_KEY" = "DIM_FORM_PACK_SUBSIDY_KEY")) %>%
+phh1233_ET <- phh1233_table %>%
+  right_join(phh1233, by = c("DIM_FORM_PACK_SUBSIDY_KEY")) %>%
   left_join(Cohort, by = "NEW_MASTER_ENCRYPTED_HCU_ID") %>%
   select(PATIENTNO, everything())  # Move PATIENTNO to the first column
+
+
+write.csv(phh1233_ET, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/phh1233_ET.csv",row.names=FALSE)
+
 
 
 BCFNZ_DCIS_lesion <- read.csv("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_lesion.csv")
