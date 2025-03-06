@@ -6,14 +6,25 @@ library(gtsummary)
 library(stringr)
 library(readr)
 
-PHH1233_table <- read.table("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH linkage/MOH-DataServices_PHH1233_table.txt", 
-                      header = TRUE, 
-                      sep = "|", 
-                      quote = "\"",  # handle quoted strings properly
-                      fill = TRUE)    # fill missing columns with NAs
+# convert txt to csv 
+#PHH1233_table <- read.table("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH linkage/MOH-DataServices_PHH1233_table.txt", 
+#                      header = TRUE,   sep = "|", 
+#                      quote = "\"",  # handle quoted strings properly
+#                      fill = TRUE)    # fill missing columns with NAs
 
-write.csv(PHH1233_table, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH/PHH1233_table.csv",row.names=FALSE)
+#write.csv(PHH1233_table, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH/PHH1233_table.csv",row.names=FALSE)
 
+phh1211 <- read.table("D:/UOA/DCIS/NZ data/Data set/MOH data/phh1211.txt", 
+                    header = TRUE,   sep = "|", 
+                    quote = "\"",  # handle quoted strings properly
+                     fill = TRUE) 
+
+MOH_dim_form_pack_subsidy <- read.csv("D:/UOA/DCIS/NZ data/Data set/MOH-20240209/MOH_dim_form_pack_subsidy.csv")
+
+phh1211_1 <- phh1211 %>%
+  left_join(MOH_dim_form_pack_subsidy, by="DIM_FORM_PACK_SUBSIDY_KEY")
+
+write.csv(phh1211_1, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/phh1211_1.csv",row.names=FALSE)
 
 #### Demographic file
 BCFNZ_work <- read_excel("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/De identify/Workup.xlsx")
@@ -161,8 +172,8 @@ BCFNZ_lesion_type <- BCFNZ_lesion_1 %>%
     DCIS_Necrosis = case_when(
       is.na(DCISNecrosis) | DCISNecrosis %in% c("Unknown") ~ "Unknown",
       TRUE ~ DCISNecrosis),
-    ## receptor
-    Receptor = case_when(
+    ## HR receptor
+    HRReceptor = case_when(
       # All specified columns are "Negative"
       (CoreBiopsyOestrogenResult == "Negative" & 
          CoreBiopsyProgesteroneResult == "Negative") | 
@@ -180,7 +191,6 @@ BCFNZ_lesion_type <- BCFNZ_lesion_1 %>%
   select(-c(CoreBiopsyBreastResult,CoreBiopsyOestrogenResult, HP_Oestrogen_Result, CoreBiopsyProgesteroneResult, HP_Progesterone_result,FNACytologyNodeResult))
 
 write.csv(BCFNZ_lesion_type, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_lesion_type.csv",row.names=FALSE)
-
 
 
 ###cross check with NZCR data 
@@ -302,6 +312,17 @@ BCFNZ_DCIS_second <- BCFNZ_primary_DCIS %>%
 
 write.csv(BCFNZ_DCIS_second, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_second.csv",row.names=FALSE)
 
+# adjuvant ET, used to cross-check with hormone recetpor postive patients
+BCFNZ_ET <- read_excel("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/De identify/HormoneTherapy.xlsx")
+
+BCFNZ_ET_1 <- BCFNZ_ET %>%
+  select(PatientNo, `Date Of Tissue Diagnosis`, `Timing of Hormone Therapy`,HormoneTherapy,`Start Date of Hormone Therapy`,StopDateHormoneTherapy) %>%
+  rename(Date_Of_Tissue_Diagnosis = `Date Of Tissue Diagnosis`, 
+         TimingofHormoneTherapy=`Timing of Hormone Therapy`, StartDateofHormoneTherapy=`Start Date of Hormone Therapy`)%>%
+  filter(TimingofHormoneTherapy=="Adjuvant" & year(Date_Of_Tissue_Diagnosis)>1999 & !is.na(HormoneTherapy))%>%
+  group_by(PatientNo)%>%
+  slice(1)
+
 
 ##### primary DCIS, 5942  DCIS female patients diagnosed 2000-2022
 BCFNZ_DCIS_lesion <- BCFNZ_primary_DCIS %>%
@@ -309,7 +330,7 @@ BCFNZ_DCIS_lesion <- BCFNZ_primary_DCIS %>%
   #left_join(BCFNZ_his_1,by = c("PatientNo", "Date_Of_Tissue_Diagnosis")) %>%
   left_join(BCFNZ_demo_1, by = c("PatientNo", "Date_Of_Tissue_Diagnosis")) %>%
   left_join(BCFNZ_work_1, by = c("PatientNo", "Date_Of_Tissue_Diagnosis")) %>%
-  left_join(BCFNZ_relatives_1, by = c("PatientNo", "Date_Of_Tissue_Diagnosis")) %>%
+  left_join(BCFNZ_ET_1, by = c("PatientNo", "Date_Of_Tissue_Diagnosis")) %>%
   filter(Gender == "Female") %>%
   #filter(New_Diagnosis_Type == "DCIS" | ((PathologicalTStageBasedOnPrimaryTumour == "is (DCIS)" ))) %>%
   #filter(is.na(DiagnosisDateOfPreviousBreastCancer)) %>%
@@ -319,13 +340,11 @@ BCFNZ_DCIS_lesion <- BCFNZ_primary_DCIS %>%
   group_by(PatientNo)%>%
   slice(1)%>%
   ungroup()%>%
-  mutate(family_history = ifelse(is.na(family_history), "No", family_history))%>%
   select(-c(Date_Of_Tissue_Diagnosis.y,Lesion_type.y,BreastSide.y))
 
 duplicated_patients <- BCFNZ_DCIS_lesion$PatientNo[duplicated(BCFNZ_DCIS_lesion$PatientNo)]
 
 write.csv(BCFNZ_DCIS_lesion, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_lesion.csv",row.names=FALSE)
-
 
 
 
@@ -337,12 +356,12 @@ phh1233_table <- read.csv("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH/P
 
 Cohort <- read.csv("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH/Cohort.csv")
 
-#ET_name <- phh1233_table %>% filter(TG_LEVEL1_NAME=="Oncology Agents and Immunosuppressants",TG_LEVEL2_NAME=="Endocrine Therapy")
 
-phh1233_ET <- phh1233_table %>%
-  right_join(phh1233, by = c("DIM_FORM_PACK_SUBSIDY_KEY")) %>%
+phh1233_ET <- phh1233 %>%
+  left_join(phh1233_table, by = c("DIM_FORM_PACK_SUBSIDY_KEY")) %>%
   left_join(Cohort, by = "NEW_MASTER_ENCRYPTED_HCU_ID") %>%
-  select(PATIENTNO, everything())  # Move PATIENTNO to the first column
+  select(PATIENTNO, everything())
+  #%>% filter(TG_LEVEL1_NAME=="Oncology Agents and Immunosuppressants",TG_LEVEL2_NAME=="Endocrine Therapy")
 
 
 write.csv(phh1233_ET, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/phh1233_ET.csv",row.names=FALSE)
