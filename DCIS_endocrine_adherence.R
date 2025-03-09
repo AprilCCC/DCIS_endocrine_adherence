@@ -25,7 +25,7 @@ cas2264_nhis <- read.table("F:/Archive/BCFNZ data/MoH linkage/MOH-DataServices_c
                       quote = "\"",  # handle quoted strings properly
                       fill = TRUE)%>%
   group_by(new_master_enc)%>%
-  slice(1)
+  slice(1)%>% ungroup()
 
 MOH_dim_form_pack_subsidy <- read.csv("D:/UOA/DCIS/NZ data/Data set/MOH-20240209/MOH_dim_form_pack_subsidy.csv")
 
@@ -749,33 +749,46 @@ BCFNZ_ET_1 <- BCFNZ_ET %>%
 # use the first pharmas dataset
 Cohort <- read.csv("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/BCFNZ-MOH/Cohort.csv")
 
-BCFNZ_DCIS_lesion <- read.csv("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_lesion.csv")
+BCFNZ_DCIS_lesion_surgery_lrr_event <- read.csv("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_lesion_surgery_lrr_event.csv")
 
 
 BCFNZ_DCIS_lesion_surgery_lrr_event_ET <- BCFNZ_DCIS_lesion_surgery_lrr_event %>%
   left_join(Cohort, by = c("PatientNo"="PATIENTNO")) %>%
-  left_join(phh1211_ET, by = c("NEW_MASTER_ENCRYPTED_HCU_ID" = "new_master_enc")) %>%
+  left_join(phh1211_ET, by = c("NEW_MASTER_ENCRYPTED_HCU_ID" = "new_master_enc"))%>%
+  group_by(PatientNo, Date_Of_Tissue_Diagnosis) %>%  # Group by PatientNo and Date_Of_Tissue_Diagnosis
+  filter(
+    is.na(DATE_DISPENSED) |
+      # Keep the min DATE_DISPENSED within 3 years of Date_Of_Tissue_Diagnosis
+      (min(DATE_DISPENSED) >= Date_Of_Tissue_Diagnosis & 
+         min(DATE_DISPENSED) <= (Date_Of_Tissue_Diagnosis + years(2))))%>%
+  ungroup()
+
+write.csv(BCFNZ_DCIS_lesion_surgery_lrr_event_ET, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_lesion_surgery_lrr_event_ET.csv",row.names=FALSE)
+
+
+BCFNZ_DCIS_ET_MPR <- BCFNZ_DCIS_lesion_surgery_lrr_event_ET %>%
   mutate(
     Date_Of_Tissue_Diagnosis = as.Date(Date_Of_Tissue_Diagnosis),  
     DATE_DISPENSED = as.Date(DATE_DISPENSED, format = "%d/%m/%Y"))%>%
   group_by(PatientNo, Date_Of_Tissue_Diagnosis) %>%  # Group by PatientNo and Date_Of_Tissue_Diagnosis
-  filter(
-    is.na(DATE_DISPENSED) |  # Keep rows where DATE_DISPENSED is NA
-      # Keep the min DATE_DISPENSED within 3 years of Date_Of_Tissue_Diagnosis
-      (min(DATE_DISPENSED) >= Date_Of_Tissue_Diagnosis & 
-         min(DATE_DISPENSED) <= (Date_Of_Tissue_Diagnosis + years(2)))) %>%
+  filter(!is.na(DATE_DISPENSED)) %>%
   # Keep the min DATE_DISPENSED within 3 years of Date_Of_Tissue_Diagnosis
-    arrange(DATE_DISPENSED)%>%
-   mutate(
+  arrange(DATE_DISPENSED)%>%
+  mutate(
     # Only calculate min and max if there are non-NA DATE_DISPENSED values
-     Date_first_despensed = ifelse(all(is.na(DATE_DISPENSED)), NA, min(DATE_DISPENSED, na.rm = TRUE)),
-     Date_last_despensed = ifelse(all(is.na(DATE_DISPENSED)), NA, max(DATE_DISPENSED, na.rm = TRUE)),
-     Date_first_despensed = as.Date(Date_first_despensed, format = "%d/%m/%Y"),
-     Date_last_despensed = as.Date(Date_last_despensed, format = "%d/%m/%Y")) %>%
+    Date_first_despensed = ifelse(all(is.na(DATE_DISPENSED)), NA, min(DATE_DISPENSED, na.rm = TRUE)),
+    Date_last_despensed = ifelse(all(is.na(DATE_DISPENSED)), NA, max(DATE_DISPENSED, na.rm = TRUE)),
+    Date_first_despensed = as.Date(Date_first_despensed, format = "%d/%m/%Y"),
+    Date_last_despensed = as.Date(Date_last_despensed, format = "%d/%m/%Y"),
+    consumption=sum(QUANTITY_DISPENSED),
+    MPR = consumption / (as.numeric(Date_last_despensed - Date_first_despensed)+last(QUANTITY_DISPENSED))) %>%
   slice(1) %>%  # Keep only the first row per group
+  filter(as.numeric(difftime(Date_last_despensed, Date_first_despensed, units = "days")) / 362.25 >= 2 ) %>%
   ungroup() 
 
-write.csv(BCFNZ_DCIS_lesion_surgery_lrr_event_ET, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_lesion_surgery_lrr_event_ET.csv",row.names=FALSE)
+
+
+write.csv(BCFNZ_DCIS_ET_MPR, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_ET_MPR.csv",row.names=FALSE)
 
 
 
