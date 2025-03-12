@@ -714,7 +714,7 @@ BCFNZ_DCIS_lesion_surgery_lrr_event <- BCFNZ_DCIS_lesion_surgery %>%
   left_join(BCFNZ_lrr_surgery_lrr_event %>%
               select(PatientNo,Date_Of_Tissue_Diagnosis,DIAGNOSIS_DATE,new_event_2275,Recurrence,Recurrence_Date) , by = c("PatientNo", "Date_Of_Tissue_Diagnosis")) %>%
   left_join(BCFNZ_follow_1, by = c("PatientNo", "Date_Of_Tissue_Diagnosis")) %>%
-  filter(Local != "No surgery") %>%
+  #filter(Local != "No surgery") %>%
   mutate(
     Recurrence = case_when(
       is.na(Recurrence) & !is.na(Cause_Of_Death) & Cause_Of_Death %in% c("Other", "Unknown") ~ "Death from other",
@@ -744,7 +744,7 @@ BCFNZ_DCIS_lesion_surgery_lrr_event_ET <- BCFNZ_DCIS_lesion_surgery_lrr_event %>
   left_join(Cohort, by = c("PatientNo"="PATIENTNO")) %>%
   left_join(phh1211_ET, by = c("NEW_MASTER_ENCRYPTED_HCU_ID" = "new_master_enc")) %>%
   group_by(PatientNo, Date_Of_Tissue_Diagnosis) %>%  # Group by PatientNo and Date_Of_Tissue_Diagnosis
-  mutate(
+  mutate(Date_Of_Tissue_Diagnosis = as.Date(Date_Of_Tissue_Diagnosis),  
     min_dispensed_date = min(!is.na(DATE_DISPENSED)),
     HRReceptor = if_else(
       !is.na(TimingofHormoneTherapy) |
@@ -761,7 +761,6 @@ write.csv(BCFNZ_DCIS_lesion_surgery_lrr_event_ET, file="D:/UOA/DCIS/NZ data/Data
 
 
 
-
 BCFNZ_DCIS_ET_MPR <- BCFNZ_DCIS_lesion_surgery_lrr_event_ET %>%
   mutate(
     Date_Of_Tissue_Diagnosis = as.Date(Date_Of_Tissue_Diagnosis),  
@@ -773,16 +772,17 @@ BCFNZ_DCIS_ET_MPR <- BCFNZ_DCIS_lesion_surgery_lrr_event_ET %>%
   mutate(
     # Only calculate min and max if there are non-NA DATE_DISPENSED values
     Date_first_despensed = ifelse(
-      all(is.na(DATE_DISPENSED)) |  min(DATE_DISPENSED, na.rm = TRUE) < Date_Of_Tissue_Diagnosis |
-        (Recurrence != "No-recurrence" & min(DATE_DISPENSED, na.rm = TRUE) < Recurrence_Date), NA, min(DATE_DISPENSED, na.rm = TRUE)),
+      all(is.na(DATE_DISPENSED)) | (min(DATE_DISPENSED, na.rm = TRUE) < Date_Of_Tissue_Diagnosis | (Recurrence != "No-recurrence" & min(DATE_DISPENSED, na.rm = TRUE) < Recurrence_Date)),
+      NA,  min(DATE_DISPENSED, na.rm = TRUE)),
     Date_last_despensed = ifelse(
-      all(is.na(DATE_DISPENSED)) | max(DATE_DISPENSED, na.rm = TRUE) < Date_Of_Tissue_Diagnosis | 
-        (Recurrence != "No-recurrence" &  max(DATE_DISPENSED, na.rm = TRUE) < Recurrence_Date), NA,  max(DATE_DISPENSED, na.rm = TRUE)),
+      all(is.na(DATE_DISPENSED)) | (max(DATE_DISPENSED, na.rm = TRUE) < Date_Of_Tissue_Diagnosis |
+           (Recurrence != "No-recurrence" & max(DATE_DISPENSED, na.rm = TRUE) < Recurrence_Date)), NA, 
+      max(DATE_DISPENSED, na.rm = TRUE)),
     Date_first_despensed = as.Date(Date_first_despensed, format = "%d/%m/%Y"),
     Date_last_despensed = as.Date(Date_last_despensed, format = "%d/%m/%Y"),
     consumption = ifelse(!is.na(Date_first_despensed), sum(QUANTITY_DISPENSED, na.rm = TRUE),  NA),
     MPR = ifelse(!is.na(Date_first_despensed), 
-      consumption / (as.numeric(Date_last_despensed - Date_first_despensed) + last(QUANTITY_DISPENSED)), NA)) %>%
+      consumption / (as.numeric(Date_last_despensed - Date_first_despensed) + last(QUANTITY_DISPENSED)), NA))%>%
   slice(1) %>%  # Keep only the first row per group
   #filter(as.numeric(difftime(Date_last_despensed, Date_first_despensed, units = "days")) / 362.25 >= 2 ) %>%
   ungroup() 
@@ -794,6 +794,7 @@ write.csv(BCFNZ_DCIS_ET_MPR, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Res
 BCFNZ_DCIS_ET_ER <- BCFNZ_DCIS_ET_MPR %>%
   filter(HRReceptor %in% c("Positive")) %>%
   mutate(
+    Ethnicity = factor(Ethnicity, levels = c("Maori", "Pacific","Asian","European", "Other or Unknown")),
     MenopausalStatus=ifelse(MenopausalStatus %in% c("Pre/peri","Peri-menopausal"),"Peri",MenopausalStatus),
     across(c(Ethnicity, Rurality, age_group, dep_index_c, Detection,DCIS_Necrosis,HighestDCISGrade,
              DCIS_tumour_size, Local, SiteHealthFacilityOfSurgery,DCIS_margin, Axillary,MenopausalStatus), ~ factor(.)),
@@ -815,37 +816,66 @@ BCFNZ_DCIS_ET_ER_table <- print(BCFNZ_DCIS_ET_ER_table,showAllLevels = TRUE)
 write.csv(BCFNZ_DCIS_ET_ER_table, file = "D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_ET_ER_table.csv")
 
 
-log_reg_multi_ET <- data.frame()
 
+###simple logistic regression for all groups
+#Define the factors to analyze
 factors <- c("Ethnicity", "age_group", "MenopausalStatus","dep_index_c", "Rurality", "Detection", "DCIS_Necrosis", "HighestDCISGrade", "DCIS_tumour_size", "Local","SiteHealthFacilityOfSurgery","DCIS_margin", "Axillary")
 
 # Define the reference groups
 refs <- c("European", "45-69", "Post","NZDep1-4", "Urban", "BSA screen", "Present", "High", "<=20", "BCS with RT", "Public",">=2","No axillary intervention")
 
-# Loop through each factor and perform logistic regression, using factors and refs in the model
+# Create an empty data frame to store the results
+log_reg_uni_ET <- data.frame()
+
+# Loop through each factor and perform logistic regression
 for (i in seq_along(factors)) {
   factor <- factors[i]
   ref <- refs[i]
-  
-  # Construct the model formula by releveling each factor
-  model_formula <- as.formula(paste("ET_binary ~", paste(sprintf("relevel(%s, ref = '%s')", factor, ref), collapse = "+")))
-  
-  # Fit the logistic regression model
+  model_formula <- reformulate(sprintf("relevel(%s, ref = '%s')", factor, ref), response = "ET_binary")
   model <- glm(model_formula, data = BCFNZ_DCIS_ET_ER, family = binomial)
   summary(model)
   
   # Store the results in a temporary data frame
   temp_df <- data.frame(factor = factor,
-                        OR = round(exp(coef(model)), 2),
-                        CI_lower = round(exp(confint(model)[, 1]), 2),
-                        CI_upper = round(exp(confint(model)[, 2]), 2))
+                        OR = round(exp(coef(model)),2),
+                        CI_lower = round(exp(confint(model)[, 1]),2),
+                        CI_upper = round(exp(confint(model)[, 2]),2))
+  temp_df$OR_CI <- paste(temp_df$OR, "(", temp_df$CI_lower, ",", temp_df$CI_upper, ")", sep = "")
   
-  # Create OR and CI string
+  
+  # Append the temporary data frame to the main data frame
+  log_reg_uni_ET <- rbind(log_reg_uni_ET, temp_df)}
+
+# Print the resulting data frame
+print(log_reg_uni_ET)
+
+write.csv(log_reg_uni_ET, file = "D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/log_reg_uni_ET.csv")
+
+# multiple logistic regression
+
+log_reg_multi_ET <- data.frame()
+
+factors <- c("Ethnicity", "age_group", "dep_index_c", "Rurality", "Detection", "DCIS_Necrosis", "HighestDCISGrade", "DCIS_tumour_size", "Local","SiteHealthFacilityOfSurgery","DCIS_margin", "Axillary")
+
+# Define the reference groups
+refs <- c("European", "45-69", "NZDep1-4", "Urban", "BSA screen", "Present", "High", "<=20", "BCS with RT", "Public",">=2","No axillary intervention")
+
+for (i in seq_along(factors)) {
+  factor <- factors[i]
+  ref <- refs[i]
+  model_formula <- as.formula(paste("ET_binary ~", paste(sprintf("relevel(%s, ref = '%s')", factors, refs), collapse = "+")))
+  model <- glm(model_formula, data = BCFNZ_DCIS_ET_ER, family = binomial)
+  summary(model)
+  
+  # Store the results in a temporary data frame
+  temp_df <- data.frame(factor = factor,
+                        OR = round(exp(coef(model)),2),
+                        CI_lower = round(exp(confint(model)[, 1]),2),
+                        CI_upper = round(exp(confint(model)[, 2]),2))
   temp_df$OR_CI <- paste(temp_df$OR, "(", temp_df$CI_lower, ",", temp_df$CI_upper, ")", sep = "")
   
   # Append the temporary data frame to the main data frame
-  log_reg_multi_ET <- rbind(log_reg_multi_ET, temp_df)
-}
+  log_reg_multi_ET <- rbind(log_reg_multi_ET, temp_df)}
 
 # Print the resulting data frame
 print(log_reg_multi_ET)
