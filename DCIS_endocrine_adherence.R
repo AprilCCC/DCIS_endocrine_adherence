@@ -32,7 +32,7 @@ MOH_dim_form_pack_subsidy <- read.csv("D:/UOA/DCIS/NZ data/Data set/MOH-20240209
 phh1211_ET <- phh1211 %>%
   left_join(MOH_dim_form_pack_subsidy, by="DIM_FORM_PACK_SUBSIDY_KEY")%>%
   left_join(cas2264_nhis, by="new_master_enc")%>%
-  filter(TG_NAME2=="Endocrine Therapy")%>%
+  filter(TG_NAME2=="Endocrine Therapy" | TG_NAME3 %in% c("GnRH Analogues"))%>%
   select(new_master_enc, AGE_AT_DISPENSING,CHEMICAL_NAME,DATE_DISPENSED, FORMULATION_NAME,
          REPEAT_SEQUENCE_NUMBER,QUANTITY_DISPENSED,QUANTITY_PRESCRIBED,
          DISPENSINGS_PRESCRIBED,DOSE,FREQUENCY,DAILY_DOSE,DAYS_SUPPLY)
@@ -360,7 +360,7 @@ duplicated_patients <- BCFNZ_DCIS_lesion$PatientNo[duplicated(BCFNZ_DCIS_lesion$
 write.csv(BCFNZ_DCIS_lesion, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_lesion.csv",row.names=FALSE)
 
 
-#### choose the last definitive surgery
+#### choose the first surgery
 BCFNZ_surgery <- read_excel("D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/De identify/Primary Surgery.xlsx")
 
 BCFNZ_surgery_1 <- BCFNZ_surgery %>%
@@ -403,19 +403,19 @@ BCFNZ_surgery_1 <- BCFNZ_surgery %>%
       LeftBreastTypeOfBreastSurgery == "Unknown" | RightBreastTypeOfBreastSurgery == "Unknown" ~ "Mastectomy",
       is.na(LeftBreastTypeOfBreastSurgery) | is.na(RightBreastTypeOfBreastSurgery) ~ "No surgery"),
     surgery_date = if_else(surgery != "No surgery", DateOfSurgery, NA_Date_),
-    ##chose the last surgery
+    ##chose the first surgery
     Axillary = case_when(
-      all(axillary == "No axillary intervention") ~ last(axillary),
-      TRUE ~ last(axillary[axillary != "No axillary intervention"])),
+      all(axillary == "No axillary intervention") ~ first(axillary),
+      TRUE ~ first(axillary[axillary != "No axillary intervention"])),
     Axillary_date = case_when(
-      all(axillary == "No axillary intervention") ~ last(axillary_date),
-      TRUE ~ last(axillary_date[axillary != "No axillary intervention"])),
+      all(axillary == "No axillary intervention") ~ first(axillary_date),
+      TRUE ~ first(axillary_date[axillary != "No axillary intervention"])),
     Surgery = case_when(
-      all(surgery == "No surgery") ~ last(surgery),
-      TRUE ~ last(surgery[surgery != "No surgery"])),
+      all(surgery == "No surgery") ~ first(surgery),
+      TRUE ~ first(surgery[surgery != "No surgery"])),
     Surgery_definitive_date = case_when(
-      all(surgery == "No surgery") ~ last(surgery_date),
-      TRUE ~ last(surgery_date[surgery != "No surgery"])),
+      all(surgery == "No surgery") ~ first(surgery_date),
+      TRUE ~ first(surgery_date[surgery != "No surgery"])),
     Surgery_first_date = case_when(
       all(surgery == "No surgery") ~ first(surgery_date),
       TRUE ~ first(surgery_date[surgery != "No surgery"]))) %>%
@@ -792,13 +792,13 @@ write.csv(BCFNZ_DCIS_ET_MPR, file="D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Res
 
 # logistic regression on the use of ET among ER+
 BCFNZ_DCIS_ET_ER <- BCFNZ_DCIS_ET_MPR %>%
-  filter(HRReceptor %in% c("Positive")) %>%
+  #filter(HRReceptor %in% c("Positive")) %>%
   mutate(
     Ethnicity = factor(Ethnicity, levels = c("Maori", "Pacific","Asian","European", "Other or Unknown")),
     MenopausalStatus=ifelse(MenopausalStatus %in% c("Pre/peri","Peri-menopausal"),"Peri",MenopausalStatus),
     across(c(Ethnicity, Rurality, age_group, dep_index_c, Detection,DCIS_Necrosis,HighestDCISGrade,
              DCIS_tumour_size, Local, SiteHealthFacilityOfSurgery,DCIS_margin, Axillary,MenopausalStatus), ~ factor(.)),
-    ET_binary = ifelse(TimingofHormoneTherapy %in% c("Adjuvant") | !is.na(Date_first_despensed), 1, 0)) ##ET as 1, no ET as 0
+    ET_binary = ifelse(!HRReceptor %in% c("Unknown"), 1, 0)) ## HR tested as 1, no test as 0
 
 write.csv(BCFNZ_DCIS_ET_ER, file = "D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Result/Endocrine/BCFNZ_DCIS_ET_ER.csv")
 
@@ -855,10 +855,10 @@ write.csv(log_reg_uni_ET, file = "D:/UOA/DCIS/NZ data/Data set/BCFNZ_240729/Resu
 
 log_reg_multi_ET <- data.frame()
 
-factors <- c("Ethnicity", "age_group", "dep_index_c", "Rurality", "Detection", "DCIS_Necrosis", "HighestDCISGrade", "DCIS_tumour_size", "Local","SiteHealthFacilityOfSurgery","DCIS_margin", "Axillary")
+factors <- c("Ethnicity", "age_group", "dep_index_c", "Rurality", "Detection", "DCIS_Necrosis", "HighestDCISGrade", "DCIS_tumour_size", "SiteHealthFacilityOfSurgery","DCIS_margin", "Axillary")
 
 # Define the reference groups
-refs <- c("European", "45-69", "NZDep1-4", "Urban", "BSA screen", "Present", "High", "<=20", "BCS with RT", "Public",">=2","No axillary intervention")
+refs <- c("European", "45-69", "NZDep1-4", "Urban", "BSA screen", "Present", "High", "<=20", "Public",">=2","No axillary intervention")
 
 for (i in seq_along(factors)) {
   factor <- factors[i]
