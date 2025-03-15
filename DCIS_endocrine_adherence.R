@@ -333,7 +333,9 @@ BCFNZ_ET_1 <- BCFNZ_ET %>%
   select(PatientNo, `Date Of Tissue Diagnosis`, `Timing of Hormone Therapy`,HormoneTherapy,`Start Date of Hormone Therapy`,StopDateHormoneTherapy) %>%
   rename(Date_Of_Tissue_Diagnosis = `Date Of Tissue Diagnosis`, 
          TimingofHormoneTherapy=`Timing of Hormone Therapy`, StartDateofHormoneTherapy=`Start Date of Hormone Therapy`)%>%
-  filter(TimingofHormoneTherapy=="Adjuvant" & year(Date_Of_Tissue_Diagnosis)>1999 & !is.na(HormoneTherapy))%>%
+  filter(
+    #TimingofHormoneTherapy=="Adjuvant" & 
+           year(Date_Of_Tissue_Diagnosis)>1999 & !is.na(HormoneTherapy))%>%
   group_by(PatientNo)%>%
   slice(1)
 
